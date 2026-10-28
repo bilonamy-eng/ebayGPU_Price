@@ -63,7 +63,7 @@ a:hover{text-decoration:underline}
     <b>说明</b>
     <ul>
       <li>总价 = 商品价 + 邮费。目标价和还价上限（目标 ×1.15）按每个型号单独设置。</li>
-      <li>"可砍价"表示总价超目标不到 15%，且页面有 Make offer。数量未显示的商品页有数量输入框但没写库存，需要手动核查；价格判断时按 1 件计。</li>
+      <li>"可砍价"表示总价超目标不到 15%，且页面有 Make offer。没有数量输入框的商品按 1 件计；有数量输入框但没写库存的，标“数量未显示(需要手动核查)”，价格判断按 1 件计。</li>
       <li>散热方式没有逐件读取，购买前请在页面里确认带风扇。</li>
       <li>已排除：坏件、笔记本模块、无风扇被动卡、4Rx4 / LRDIMM 内存、标题带故障说明的商品。</li>
     </ul>
@@ -86,7 +86,7 @@ var D=[
 ["RTX 4000", "940046358431", 200.54, 175, "hidden", "", "661 / 100%", "Quadro RTX 4000 8GB PCIe x16 3xDP USB-C"],
 ["RTX 5000", "127929308015", 449.94, 425, "Last one", "", "18807 / 99.8%", "Quadro RTX 5000 16GB HP L40548-002"],
 ["RTX 5000", "800802549709", 449.99, 425, "2a", "", "19649 / 99%", "Quadro RTX 5000 16GB"],
-["RTX 5000", "800576989849", 449.99, 425, "hidden", "", "19649 / 99%", "Dell Quadro RTX 5000 16GB"],
+["RTX 5000", "800576989849", 449.99, 425, "hiddenbox", "", "19649 / 99%", "Dell Quadro RTX 5000 16GB"],
 ["RTX 5000", "198734805830", 449.99, 425, "10+a", "", "120756 / 99.8%", "PNY Quadro RTX 5000 16GB VCQRTX5000"],
 ["RTX 5000", "407304056593", 452.19, 425, "hidden BO", "", "1055 / 100%", "Dell Quadro RTX 5000 16GB Excellent"],
 ["RTX 5000", "336861382861", 457.94, 425, "hidden BO", "", "14 / 100%", "Quadro RTX 5000 16GB（卖家只有 14 条反馈）"],
@@ -186,7 +186,7 @@ var D=[
 ];
 var ORDER=["RTX 4000","RTX 5000","A2000","A4000","A5000","RTX 6000 Ada","P4000","T1000 4GB","P2000","P2200","P1000","DDR4 ECC 32GB"];
 var CAP=1.15;
-function q(t){var bo=/BO/.test(t);var s=t.replace(' BO','');var pl=/^\d+\+a$/.test(s);var n=s==='Last one'?1:(/^\d+\+?a$/.test(s)?parseInt(s):null);return{bo:bo,n:n,txt:n===null?'数量未显示(需要手动核查)':(n===1?'仅 1 件':(pl?'超过 '+n+' 件可买':n+' 件可买'))}}
+function q(t){var bo=/BO/.test(t);var s=t.replace(' BO','');var pl=/^\d+\+a$/.test(s);var hb=s==='hiddenbox';var one=s==='Last one'||s==='hidden';var n=one?1:(/^\d+\+?a$/.test(s)?parseInt(s):null);return{bo:bo,n:n,txt:hb?'数量未显示(需要手动核查)':(s==='hidden'?'1 件':(n===1?'仅 1 件':(pl?'超过 '+n+' 件可买':n+' 件可买')))}}
 function need(m){return m==='P4000'?3:(/^P(2000|2200|1000)/.test(m)?5:1)}
 function dbuy(r){var o=q(r[4]);return r[2]<=r[3]&&(o.n===null?1:o.n)>=need(r[0])}
 function status(r){var o=q(r[4]);var over=r[2]/r[3];
