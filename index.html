@@ -1,0 +1,150 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex,nofollow"></head><body><title>eBay GPU 行情板</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one column of model groups; each group is a compact table; status shown as a left tag. */
+:root{--bg:#f4f6f8;--card:#ffffff;--fg:#16202a;--mute:#5d6b78;--line:#dde3e9;--accent:#0b6e8a;--good:#1b7f4b;--warn:#a86400;--bad:#b3362e;--chip:#e8eef3;
+--sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;--mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10161c;--card:#18212a;--fg:#e6edf3;--mute:#93a1ae;--line:#2a3641;--accent:#5cc0dc;--good:#52c283;--warn:#e3a33b;--bad:#ef7b72;--chip:#222e39;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#10161c;--card:#18212a;--fg:#e6edf3;--mute:#93a1ae;--line:#2a3641;--accent:#5cc0dc;--good:#52c283;--warn:#e3a33b;--bad:#ef7b72;--chip:#222e39;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;line-height:1.45;padding-block:20px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+h1{font-size:22px;margin:0;font-weight:600;text-wrap:balance}
+.sub{color:var(--mute);margin:4px 0 0}
+.meta{display:flex;flex-wrap:wrap;gap:8px 18px;font-family:var(--mono);font-size:12.5px;color:var(--mute)}
+.meta b{color:var(--fg);font-weight:500}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.bar button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--fg);padding:6px 12px;border-radius:6px;cursor:pointer}
+.bar button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+.bar button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.grp{background:var(--card);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.grp h2{margin:0;padding:10px 14px;font-size:15px;font-weight:600;display:flex;flex-wrap:wrap;gap:4px 12px;justify-content:space-between;border-bottom:1px solid var(--line)}
+.grp h2 span{font-family:var(--mono);font-weight:400;font-size:12.5px;color:var(--mute)}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:680px}
+th,td{text-align:left;padding:8px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--mute);font-weight:500}
+tr:last-child td{border-bottom:0}
+td.n,th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.tag{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;background:var(--chip);white-space:nowrap}
+.tag.good{color:var(--good)}.tag.warn{color:var(--warn)}.tag.bad{color:var(--bad)}
+a{color:var(--accent);text-decoration:none;font-family:var(--mono);font-size:12.5px}
+a:hover{text-decoration:underline}
+.t{color:var(--mute);font-size:12.5px;display:block;margin-top:2px;max-width:46ch}
+.note{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px;color:var(--mute)}
+.note ul{margin:6px 0 0;padding-left:18px}
+@media (prefers-reduced-motion:no-preference){.grp{transition:border-color .15s}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>eBay GPU 行情板</h1>
+    <p class="sub">美国 eBay，送到 19713，仅美国发货。每次新一轮查询后刷新。</p>
+  </header>
+  <div class="meta">
+    <span>查询时间（阿姆斯特丹）<b>2026-10-28 18:35</b></span>
+    <span>金丝雀 800577447277 <b>RTX 5000 · $449.99 · 9 件 · 正常</b></span>
+    <span>候选 <b id="cnt"></b> 条</span>
+  </div>
+  <div class="bar" id="bar" role="group" aria-label="筛选">
+    <button data-f="all" aria-pressed="true">全部</button>
+    <button data-f="buy" aria-pressed="false">可直接买 / 可还价</button>
+    <button data-f="short" aria-pressed="false">数量未显示或不够</button>
+  </div>
+  <div id="groups"></div>
+  <div class="note">
+    <b>说明</b>
+    <ul>
+      <li>总价 = 商品价 + 邮费。目标价和还价上限（目标 ×1.15）按每个型号单独设置。</li>
+      <li>"可砍价"表示总价超目标不到 15%，且页面有 Make offer。数量未显示的需要进页面确认。</li>
+      <li>散热方式没有逐件读取，购买前请在页面里确认带风扇。</li>
+      <li>已排除：坏件、笔记本模块、无风扇被动卡、4Rx4 / LRDIMM 内存、标题带故障说明的商品。</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+// [型号, itemId, 总价, 目标价, 数量文本, 退货, 卖家反馈, 标题]
+var D=[
+["A2000","800845159515",329.99,310,"Last one","30天","19644 / 99%","NVIDIA RTX A2000 6GB"],
+["A2000","227574617496",336.99,310,"7a","30天","297 / 100%","PNY RTX A2000 6GB 低profile"],
+["A2000","327408446952",349,310,"2a BO","30天","451 / 96.8%","RTX A2000 6GB PCIe 4.0"],
+["A2000","176879974085",348.99,310,"Last one BO","30天","95679 / 99.8%","HP RTX A2000 6GB"],
+["A2000","127966713643",349.99,310,"Last one BO","30天","7668 / 99.9%","Dell RTX A2000 6GB"],
+["A4000","377595218856",850,900,"hidden BO","不退货","1 / 100%","PNY RTX A4000 16GB（邮费未显示，卖家只有 1 条反馈）"],
+["A4000","920082477407",919.28,900,"hidden","不退货","18 / 100%","RTX A4000 16GB TESTED AND WORKING"],
+["A4000","940038937694",948.95,900,"hidden","不退货","5592 / 99.8%","RTX A4000 16GB"],
+["A4000","147652939651",956.8,900,"hidden BO","不退货","206 / 100%","RTX A4000 16GB"],
+["A4000","137872003802",960.8,900,"hidden BO","不退货","551 / 100%","RTX A4000 16GB Tested"],
+["A4000","820258699154",975,900,"2a","不退货","543 / 99.1%","Dell RTX A4000 16GB"],
+["A4000","128138024374",979.99,900,"2a BO","30天","1609 / 100%","RTX A4000 16GB PG190"],
+["A4000","117473483740",999.97,900,"2a","30天","8959 / 99.8%","RTX A4000 16GB"],
+["A4000","307253990586",999.99,900,"hidden","30天","20316 / 99.9%","Dell RTX A4000 16GB PG190"],
+["A4000","407225643986",999.99,900,"Last one","可退货","120755 / 99.8%","Lenovo RTX A4000 16GB"],
+["A5000","900044859442",2220,2100,"hidden BO","不退货","690 / 100%","RTX A5000 24GB ECC"],
+["A5000","960076958327",2366.3,2100,"hidden","可退货","108 / 100%","PNY RTX A5000 24GB"],
+["A5000","126888400088",2379.99,2100,"9a","30天","46252 / 99.7%","RTX A5000 24GB VCNRTXA5000-PB"],
+["RTX 6000 Ada","327427787879",7214.9,7000,"2a","30天","73 / 100%","Nvida RTX 6000 ada（信息很少）"],
+["RTX 6000 Ada","298645855998",7499.99,7000,"Last one","30天","187912 / 99.6%","Lenovo RTX 6000 Ada 48GB"],
+["RTX 6000 Ada","187983191756",7994,7000,"hidden BO","30天","72 / 92.3%","RTX 6000 Ada 48GB"],
+["RTX 6000 Ada","237124296783",8000,7000,"hidden BO","不退货","未显示","RTX 6000 Ada 48GB ECC new"],
+["DDR4 ECC 32GB","206491023055",109,100,"Last one","30天","14564 / 98.9%","Samsung 32GB DDR4 2666 ECC RDIMM（需确认 2Rx4）"],
+["DDR4 ECC 32GB","336693108003",115,100,"hidden","不退货","385 / 100%","DDR4 2133 ECC 32GB（排数未确认）"],
+["P1000","168822571218",42,40,"hidden BO","30天","8596 / 99.6%","Quadro P1000 4GB 台式"],
+["P2000","940038812254",71.95,70,"3a","不退货","5592 / 99.8%","Quadro P2000 5GB"],
+["P2000","147646087564",73.29,70,"hidden BO","30天","47180 / 100%","Quadro P2000 5GB"],
+["P2200","257821211766",80,80,"hidden","不退货","1267 / 100%","HP Quadro P2200 5GB"],
+["P4000","147644415530",140,140,"hidden","30天","58810 / 99.7%","Quadro P4000 8GB"],
+["P4000","307241059761",143.96,140,"hidden BO","30天","2535 / 99.9%","Quadro P4000 GN4T7"],
+["P4000","128157923421",145,140,"6a BO","30天","3705 / 99.8%","Quadro P4000 8GB 4xDP"],
+["P4000","377571158244",149,140,"hidden BO","30天","38388 / 100%","HP Quadro P4000 8GB"],
+["P4000","327427602657",149.95,140,"20a","30天","1208 / 100%","Quadro P4000 8GB 4xDP"],
+["P4000","377554146543",149.99,140,"3a","30天","96 / 100%","Quadro P4000 8GB Tested"],
+["P4000","237133390681",149.99,140,"2a","30天","3203 / 99.7%","PNY Quadro P4000 8GB"],
+["P4000","860053041313",149.99,140,"3a BO","不退货","54 / 100%","Quadro P4000 8GB"],
+["RTX 4000","880058119961",185,175,"hidden BO","不退货","347 / 100%","Quadro RTX 4000 8GB"],
+["RTX 4000","137875168659",196.19,175,"Last one","不退货","890 / 98.6%","Quadro RTX 4000 8GB"],
+["RTX 4000","287676173502",198.95,175,"3a","不退货","5592 / 99.8%","Quadro RTX 4000 8GB"],
+["RTX 4000","800772789427",199.99,175,"Last one","30天","19644 / 99%","Dell Quadro RTX 4000 8GB"],
+["RTX 5000","127929308015",449.94,425,"Last one","30天","18805 / 99.8%","Quadro RTX 5000 16GB HP"],
+["RTX 5000","800577447277",449.99,425,"9a","30天","19644 / 99%","Dell Quadro RTX 5000 16GB"],
+["RTX 5000","800576989852",449.99,425,"4a","30天","19644 / 99%","PNY Quadro RTX 5000 16GB"],
+["RTX 5000","800802549709",449.99,425,"2a","30天","19644 / 99%","Quadro RTX 5000 16GB"],
+["RTX 5000","336861382861",457.94,425,"hidden BO","不退货","14 / 100%","Quadro RTX 5000 16GB"],
+["RTX 5000","920021648104",475,425,"Last one BO","30天","6367 / 99.9%","Quadro RTX 5000 16GB"],
+["T1000 4GB","147655217975",194.94,180,"2a BO","30天","8114 / 100%","Dell T1000 4GB 0DW8FN"],
+["T1000 4GB","175789754261",199,180,"5a BO","30天","95679 / 99.8%","HP T1000 4GB M41413-001"],
+["T1000 4GB","800611743462",199.99,180,"3a","30天","19644 / 99%","Quadro T1000 4GB"],
+["T1000 4GB","168814619538",201.19,180,"5a BO","不退货","7 / 100%","Dell T1000 4GB（卖家只有 7 条反馈）"],
+["T1000 4GB","318432160969",199.99,180,"hidden","不退货","79 / 100%","Quadro T1000 4GB 低profile"]
+];
+var ORDER=["RTX 4000","RTX 5000","A2000","A4000","A5000","RTX 6000 Ada","P4000","T1000 4GB","P2000","P2200","P1000","DDR4 ECC 32GB"];
+var CAP=1.15;
+function q(t){var bo=/BO/.test(t);var s=t.replace(' BO','');var n=s==='Last one'?1:(/^\d+a$/.test(s)?parseInt(s):null);return{bo:bo,n:n,txt:n===null?'数量未显示':(n===1?'仅 1 件':n+' 件可买')}}
+function status(r){var o=q(r[4]);var over=r[2]/r[3];
+  if(over<=1&&o.n!==null)return['good','可直接买',1];
+  if(over<=1)return['warn','价格合格，数量待确认',2];
+  if(over<=CAP&&o.bo)return['warn','可还价',2];
+  return['bad','略超，不可还价',3]}
+var cur='all';
+function render(){
+  var host=document.getElementById('groups');host.innerHTML='';var total=0;
+  ORDER.forEach(function(m){
+    var rows=D.filter(function(r){return r[0]===m}).map(function(r){return{r:r,s:status(r),o:q(r[4])}});
+    if(cur==='buy')rows=rows.filter(function(x){return x.s[2]<3&&x.o.n!==null||x.s[0]==='warn'&&x.o.bo});
+    if(cur==='short')rows=rows.filter(function(x){return x.o.n===null||x.o.n<(x.r[0]==='P4000'?3:(/^P(2000|2200|1000)/.test(x.r[0])?5:1))});
+    if(!rows.length)return;
+    rows.sort(function(a,b){return a.r[2]-b.r[2]});total+=rows.length;
+    var g=document.createElement('section');g.className='grp';
+    var tgt=rows[0].r[3];
+    var h='<h2>'+m+'<span>目标 $'+tgt.toLocaleString()+' · 还价上限 $'+(tgt*CAP).toLocaleString(undefined,{maximumFractionDigits:2})+'</span></h2><div class="tw"><table><thead><tr><th>状态</th><th class="n">总价</th><th>数量</th><th>还价</th><th>退货</th><th>卖家</th><th>商品</th></tr></thead><tbody>';
+    rows.forEach(function(x){var r=x.r;
+      h+='<tr><td><span class="tag '+x.s[0]+'">'+x.s[1]+'</span></td><td class="n">$'+r[2].toFixed(2)+'</td><td>'+x.o.txt+'</td><td>'+(x.o.bo?'可还价':'不可还价')+'</td><td>'+r[5]+'</td><td>'+r[6]+'</td><td><a href="https://www.ebay.com/itm/'+r[1]+'" target="_blank" rel="noopener">'+r[1]+'</a><span class="t">'+r[7]+'</span></td></tr>'});
+    h+='</tbody></table></div>';g.innerHTML=h;host.appendChild(g)});
+  document.getElementById('cnt').textContent=total;
+  if(!total)host.innerHTML='<div class="note">这个筛选下没有商品。</div>'}
+document.getElementById('bar').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;cur=b.dataset.f;[].forEach.call(this.children,function(x){x.setAttribute('aria-pressed',x===b)});render()});
+render();
+</script>
+</body></html>
