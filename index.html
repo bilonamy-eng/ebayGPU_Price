@@ -121,7 +121,7 @@ var D=[
 ];
 var ORDER=["RTX 4000","RTX 5000","A2000","A4000","A5000","RTX 6000 Ada","P4000","T1000 4GB","P2000","P2200","P1000","DDR4 ECC 32GB"];
 var CAP=1.15;
-function q(t){var bo=/BO/.test(t);var s=t.replace(' BO','');var n=s==='Last one'?1:(/^\d+a$/.test(s)?parseInt(s):null);return{bo:bo,n:n,txt:n===null?'数量未显示':(n===1?'仅 1 件':n+' 件可买')}}
+function q(t){var bo=/BO/.test(t);var s=t.replace(' BO','');var n=s==='Last one'?1:(/^\d+a$/.test(s)?parseInt(s):null);return{bo:bo,n:n,txt:n===null?'数量未显示（1 件）':(n===1?'仅 1 件':n+' 件可买')}}
 function status(r){var o=q(r[4]);var over=r[2]/r[3];
   if(over<=1&&o.n!==null)return['good','可直接买',1];
   if(over<=1)return['warn','价格合格，数量待确认',2];
