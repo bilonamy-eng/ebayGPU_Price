@@ -32,6 +32,11 @@ td.n,th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-
 a{color:var(--accent);text-decoration:none;font-family:var(--mono);font-size:12.5px}
 a:hover{text-decoration:underline}
 .t{color:var(--mute);font-size:12.5px;display:block;margin-top:2px;max-width:46ch}
+.buy{border:2px solid var(--good);border-radius:8px;background:var(--card);padding:12px 14px}
+.buy h2{margin:0 0 6px;font-size:16px;color:var(--good)}
+.buy.none{border:1px solid var(--line)}
+.buy.none h2{color:var(--mute);font-weight:500;font-size:14px;margin:0}
+.buy table{min-width:560px}
 .note{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px;color:var(--mute)}
 .note ul{margin:6px 0 0;padding-left:18px}
 @media (prefers-reduced-motion:no-preference){.grp{transition:border-color .15s}}
@@ -47,6 +52,7 @@ a:hover{text-decoration:underline}
     <span>金丝雀 800577447277 <b>RTX 5000 · $449.99 · 9 件 · 正常</b></span>
     <span>候选 <b id="cnt"></b> 条</span>
   </div>
+  <section id="buy" aria-live="polite"></section>
   <div class="bar" id="bar" role="group" aria-label="筛选">
     <button data-f="all" aria-pressed="true">全部</button>
     <button data-f="buy" aria-pressed="false">可直接买 / 可还价</button>
@@ -182,8 +188,10 @@ var D=[
 var ORDER=["RTX 4000","RTX 5000","A2000","A4000","A5000","RTX 6000 Ada","P4000","T1000 4GB","P2000","P2200","P1000","DDR4 ECC 32GB"];
 var CAP=1.15;
 function q(t){var bo=/BO/.test(t);var s=t.replace(' BO','');var n=s==='Last one'?1:(/^\d+a$/.test(s)?parseInt(s):null);return{bo:bo,n:n,txt:n===null?'数量未显示（1 件）':(n===1?'仅 1 件':n+' 件可买')}}
+function need(m){return m==='P4000'?3:(/^P(2000|2200|1000)/.test(m)?5:1)}
+function dbuy(r){var o=q(r[4]);return r[2]<=r[3]&&(o.n===null?1:o.n)>=need(r[0])}
 function status(r){var o=q(r[4]);var over=r[2]/r[3];
-  if(over<=1&&o.n!==null)return['good','可直接买',1];
+  if(dbuy(r))return['good','可直接买',1];
   if(over<=1)return['warn','价格合格，数量待确认',2];
   if(over<=CAP&&o.bo)return['warn','可还价',2];
   return['bad','略超，不可还价',3]}
@@ -202,6 +210,11 @@ function render(){
     rows.forEach(function(x){var r=x.r;
       h+='<tr><td><span class="tag '+x.s[0]+'">'+x.s[1]+'</span></td><td class="n">$'+r[2].toFixed(2)+'</td><td>'+pr(r)+'</td><td>'+x.o.txt+'</td><td>'+(x.o.bo?'可还价':'不可还价')+'</td><td>'+sel(r)+'</td><td><a href="https://www.ebay.com/itm/'+r[1]+'" target="_blank" rel="noopener">'+r[1]+'</a><span class="t">'+r[7]+'</span></td></tr>'});
     h+='</tbody></table></div>';g.innerHTML=h;host.appendChild(g)});
+  var bl=D.filter(dbuy).sort(function(a,b){return a[2]-b[2]}),bh=document.getElementById('buy');
+  if(bl.length){var t='<h2>可直接买（'+bl.length+' 条）</h2><div class="tw"><table><thead><tr><th>型号</th><th class="n">总价</th><th class="n">目标</th><th>单价(运费)</th><th>数量</th><th>卖家</th><th>商品</th></tr></thead><tbody>';
+    bl.forEach(function(r){var o=q(r[4]);t+='<tr><td>'+r[0]+'</td><td class="n">$'+r[2].toFixed(2)+'</td><td class="n">$'+r[3]+'</td><td>'+pr(r)+'</td><td>'+o.txt+(o.bo?' · 可还价':'')+'</td><td>'+sel(r)+'</td><td><a href="https://www.ebay.com/itm/'+r[1]+'" target="_blank" rel="noopener">'+r[1]+'</a><span class="t">'+r[7]+'</span></td></tr>'});
+    bh.className='buy';bh.innerHTML=t+'</tbody></table></div>'}
+  else{bh.className='buy none';bh.innerHTML='<h2>本轮没有可直接买的商品（总价≤目标价且数量满足）</h2>'}
   document.getElementById('cnt').textContent=total;
   if(!total)host.innerHTML='<div class="note">这个筛选下没有商品。</div>'}
 document.getElementById('bar').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;cur=b.dataset.f;[].forEach.call(this.children,function(x){x.setAttribute('aria-pressed',x===b)});render()});
