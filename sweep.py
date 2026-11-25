@@ -59,7 +59,7 @@ MODELS = {
  "P2000":        ("Quadro P2000 5GB",        70, 5, r"p2000", r"", GPU_CAT),
  "P2200":        ("Quadro P2200 5GB",        80, 5, r"p2200", r"", GPU_CAT),
  "P1000":        ("Quadro P1000 4GB",        40, 5, r"p1000", r"", GPU_CAT),
- "DDR4 ECC 32GB":("32GB DDR4 ECC",        100, 1, r"32 ?gb", r"\b(8|16|64|128) ?gb|sodimm|so-dimm|udimm|\b([2-9]|\d\d) ?x ?32 ?gb|32 ?gb ?x ?([2-9]|\d\d)\b", ""),
+ "DDR4 ECC 32GB":("32GB DDR4 ECC",        100, 1, r"32 ?gb.*2rx4|2rx4.*32 ?gb", r"\b(8|16|64|128) ?gb|sodimm|so-dimm|udimm|\b([2-9]|\d\d) ?x ?32 ?gb|32 ?gb ?x ?([2-9]|\d\d)\b", ""),
 }
 CALLS = {"token": 0, "search": 0, "item": 0}
 DIAG = []                       # 每个型号的搜索诊断，打印在日志里
