@@ -27,13 +27,15 @@ LOW = 0.5                       # 总价低于目标的一半 → 标题加“�
 AMS = ZoneInfo("Europe/Amsterdam")
 EXCLUDE_IDS = {                 # 用户确认过的永久排除
     "377595218856", "206680618249", "227279680039", "256055431624", "305497274750",
-    "366661759506", "267777199999", "278437041334", "128105830282"}
+    "366661759506", "267777199999", "278437041334", "128105830282",
+    "206726057794"}             # Kingston KTH-PL421LQ/32G = 4Rx4 LRDIMM
 GPU_CAT = "27386"
 ACC = re.compile(r"bracket|cooler", re.I)   # 便宜且标题带这些词 = 配件；价格正常的是“带挡板”的整卡
 BAD = re.compile(
     r"for parts|not working|broken|faulty|defective|as[- ]is|untested|no video|"
     r"laptop|mobile|mxm|fan only|heatsink|heat sink|shroud|backplate|retention|extender|baffle|"
     r"box only|empty box|water ?block|passive|fanless|lrdimm|4rx4|ddr3|read desc|"
+    r"load.?reduced|quad.?rank|\bk[a-z]{2}-[a-z]{2}\d{3}lq|-l\b(?=.*pc4)|pc4-\d{4,5}[a-z]?-l\b|"   # LRDIMM 的其他写法（Kingston 料号 …LQ/32G、PC4-2133P-L）
     # 笔记本/迷你工作站显卡模块、改装配件、多件打包
     r"precision ?m?\d{4}|\bdell 7[5-7]\d0\b|thinkpad|zbook|z2 mini|\bp1[5-7]\b|\bn1[7-9][ep]-|\bqn20|"
     r"\bls-[a-z]\d|shunt|resistor|\bmod\b|overclocked|lot of ([2-9]|\d\d)|\d+ ?x nvidia|fury|tjfrk", re.I)
