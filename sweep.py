@@ -53,9 +53,10 @@ MODELS = {
  "P2000":        ("Quadro P2000 5GB",        70, 5, r"p2000", r"", GPU_CAT),
  "P2200":        ("Quadro P2200 5GB",        80, 5, r"p2200", r"", GPU_CAT),
  "P1000":        ("Quadro P1000 4GB",        40, 5, r"p1000", r"", GPU_CAT),
- "DDR4 ECC 32GB":("32GB DDR4 ECC RDIMM 2Rx4", 100, 1, r"32 ?gb", r"64 ?gb|16 ?gb|sodimm|so-dimm|udimm", ""),
+ "DDR4 ECC 32GB":("32GB DDR4 ECC",        100, 1, r"32 ?gb", r"64 ?gb|16 ?gb|8 ?gb|sodimm|so-dimm|udimm|x ?32 ?gb|32 ?gb ?x", ""),
 }
 CALLS = {"token": 0, "search": 0, "item": 0}
+DIAG = []                       # 每个型号的搜索诊断，打印在日志里
 
 
 def creds():
@@ -153,10 +154,12 @@ def search(model, tok):
         offset += 200
         if offset >= r.get("total", 0):
             break
-    rows = []
+    rows, rejected = [], []
     for it in out:
         iid, title = it.get("legacyItemId", ""), it.get("title", "")
         if iid in EXCLUDE_IDS or str(it.get("conditionId")) == "7000" or not title_ok(model, title):
+            if float(it.get("price", {}).get("value", 0)) >= target * LOW:
+                rejected.append(f"{iid} ${it['price']['value']} {title[:70]}")
             continue
         if "FIXED_PRICE" not in it.get("buyingOptions", []):
             continue
@@ -174,6 +177,8 @@ def search(model, tok):
                      "condition": it.get("condition"), "seller": s.get("username"),
                      "feedback": s.get("feedbackScore"), "positive": s.get("feedbackPercentage"),
                      "url": f"https://www.ebay.com/itm/{iid}"})
+    DIAG.append(f"{model}: 搜到 {len(out)} 条，保留 {len(rows)} 条" +
+                ("".join("\n      被过滤: " + x for x in rejected[:6]) if not rows else ""))
     return rows
 
 
@@ -315,6 +320,8 @@ def main():
     print(f"查询时间（阿姆斯特丹）{res['queryTimeAmsterdam']} · {len(rows)} 条候选 · 用时 {res['seconds']}s · API 调用 {res['apiCalls']}")
     for e in res["errors"]:
         print("  出错:", e)
+    for d in DIAG:
+        print("  " + d)
     for r in rows:
         if r.get("status") in ("可直接买", "可还价"):
             print(f"[{r['status']}] {r['model']} ${r['total']:.2f}（目标 ${r['target']}）{r['qtyText']} "
