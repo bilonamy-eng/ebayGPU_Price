@@ -7,6 +7,8 @@
   python3 sweep.py --board         # 查询后把结果写进同目录 index.html（行情板）
   python3 sweep.py --board --gate  # 同上，但只在阿姆斯特丹 8:00–01:00 之间运行
   python3 sweep.py --bulk --board  # 高数量板：只留可买数量 > 10 的，价格上限 = 目标 x1.30
+  python3 sweep.py --wide --board  # 按 x1.30 查一次并保存 api_sweep_latest.json（供高数量板共用），行情板只显示 x1.15 以内
+  python3 sweep.py --bulk --board --from-json=FILE   # 不调用 API，用已保存的结果更新高数量板
 凭据: 环境变量 EBAY_CLIENT_ID / EBAY_CLIENT_SECRET（GitHub Actions secrets），
       或本机 ~/.ebay_api.env 里写这两行。只用 Python 标准库。
 """
@@ -20,7 +22,8 @@ ENV = os.path.expanduser("~/.ebay_api.env")
 TOKEN_CACHE = os.path.expanduser("~/.ebay_api_token.json")
 API = "https://api.ebay.com"
 ZIP = "19713"
-CAP = 1.15                      # 还价上限 = 目标 x1.15（--bulk 时改为 1.30）
+CAP = 1.15                      # 搜索用的价格上限（--bulk / --wide 时改为 1.30）
+PRICE_CAP = 1.15                # 行情板：还价上限 = 目标 x1.15
 BULK_CAP = 1.30
 BULK_MIN = 10                   # 高数量板：可买数量必须 > 10（含 eBay 只显示“超过 10 件”的）
 LOW = 0.5                       # 总价低于目标的一半 → 标题加“价格异常低,请核实”
@@ -301,7 +304,7 @@ def render_board(res, path):
         (r"(查询时间（阿姆斯特丹）<b>)[^<]*(</b>)", r"\g<1>" + res["queryTimeAmsterdam"] + r"\g<2>"),
         (r"<span>(金丝雀|数据来源)[^<]*<b>[^<]*</b></span>", "<span>数据来源 eBay 官方 API <b>" + stat + "</b></span>"),
         (r"<li>(散热方式|数据来自)[^<]*</li>",
-         "<li>数据来自 eBay 官方 Browse API，每小时自动更新（阿姆斯特丹 8:00–01:00）。散热方式和照片没有逐件核对，"
+         "<li>数据来自 eBay 官方 Browse API，每小时自动更新（阿姆斯特丹 8:00–02:00）。散热方式和照片没有逐件核对，"
          "购买前请在页面里确认带风扇；卖家注册时间 API 不提供，只沿用以前查到的。</li>"),
     ]
     for pat, rep in subs:
@@ -346,7 +349,7 @@ def render_bulk(res, path):
         "数量门槛：可买数量超过 10。eBay 有时只给下限（“超过 10 件”），真实库存看不出来，页面标“10+（上限显示）”。",
         "本轮新出现：" + ("、".join(new) if new else "无") + "。",
         "本轮消失（售出、下架、涨价或数量降到 10 以下）：" + ("、".join(gone) if gone else "无") + "。",
-        "数据来自 eBay 官方 Browse API，自动更新。API 不提供“Buy N or more”阶梯价，本页只按单件价判断，阶梯价能进上限的商品可能漏掉。",
+        "数据来自 eBay 官方 Browse API，每小时自动更新（阿姆斯特丹 8:00–02:00）。API 不提供“Buy N or more”阶梯价，本页只按单件价判断，阶梯价能进上限的商品可能漏掉。",
         "照片、风扇和卖家注册时间 API 不提供；注册时间只沿用以前查到的。购买前请在商品页确认。",
         "已排除：坏件、配件（支架、挡板、散热片等）、笔记本/MXM 模块、无风扇被动卡、4Rx4 / LRDIMM 内存、只能自提的商品。",
     ]
@@ -373,28 +376,35 @@ def render_bulk(res, path):
 def main():
     args = sys.argv[1:]
     global CAP
-    board, gate, bulk = "--board" in args, "--gate" in args, "--bulk" in args
-    if bulk:
+    board, gate, bulk, wide = "--board" in args, "--gate" in args, "--bulk" in args, "--wide" in args
+    if bulk or wide:
         CAP = BULK_CAP
     from_json = next((a.split("=", 1)[1] for a in args if a.startswith("--from-json=")), None)
     names = [a for a in args if not a.startswith("--")]
     bad = [n for n in names if n not in MODELS]
     if bad:
         sys.exit(f"未知型号: {bad}；可选: {list(MODELS)}")
-    if gate and datetime.now(AMS).hour in range(1, 8):
-        print("阿姆斯特丹 01:00–08:00 之间不查询，本轮跳过。")
+    if gate and datetime.now(AMS).hour in range(2, 8):
+        print("阿姆斯特丹 02:00–08:00 之间不查询，本轮跳过。")
         return
     if from_json:                               # 仅用于离线测试渲染
         res = json.load(open(from_json, encoding="utf-8"))
         res["items"] = [r for r in res["items"] if r["id"] not in EXCLUDE_IDS and title_ok(r["model"], r["title"])]
         for r in res["items"]:
             r.setdefault("qtyMore", r.get("qtyText", "").startswith("超过"))
-        if bulk:
-            res["items"] = [r for r in res["items"] if is_bulk(r)]
+        if bulk and board:
+            cur = re.search(r"查询时间（阿姆斯特丹）<b>([^<]*)</b>", open(os.path.join(HERE, "index.html"), encoding="utf-8").read())
+            if cur and cur.group(1) == res["queryTimeAmsterdam"]:
+                print(f"高数量板已经是 {cur.group(1)} 这一轮的数据，不重复更新。")
+                return
     else:
-        res = sweep([m for m in MODELS if not names or m in names], bulk)
+        res = sweep([m for m in MODELS if not names or m in names], bulk and not wide)
         with open(os.path.join(HERE, "api_sweep_latest.json"), "w", encoding="utf-8") as f:
             json.dump(res, f, ensure_ascii=False, indent=1)
+    if bulk:
+        res["items"] = [r for r in res["items"] if is_bulk(r)]
+    else:
+        res["items"] = [r for r in res["items"] if r["total"] <= r["target"] * PRICE_CAP]
     rows = res["items"]
     print(f"查询时间（阿姆斯特丹）{res['queryTimeAmsterdam']} · {len(rows)} 条候选 · 用时 {res['seconds']}s · API 调用 {res['apiCalls']}")
     for e in res["errors"]:

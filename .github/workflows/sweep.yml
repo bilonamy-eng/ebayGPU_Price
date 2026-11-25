@@ -1,7 +1,7 @@
 name: eBay API sweep
 on:
   schedule:
-    - cron: "17 * * * *"      # 每小时一次；脚本自己跳过阿姆斯特丹 01:00–08:00
+    - cron: "17 * * * *"      # 每小时一次；脚本自己跳过阿姆斯特丹 02:00–08:00
   workflow_dispatch:
 permissions:
   contents: write
@@ -21,12 +21,12 @@ jobs:
         env:
           EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
           EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
-        run: python3 sweep.py --board ${{ github.event_name == 'schedule' && '--gate' || '' }}
+        run: python3 sweep.py --wide --board ${{ github.event_name == 'schedule' && '--gate' || '' }}
       - name: Commit board
         run: |
-          if git diff --quiet -- index.html; then echo "no change"; exit 0; fi
+          git add index.html api_sweep_latest.json
+          if git diff --cached --quiet; then echo "no change"; exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add index.html
           git commit -m "Update board $(TZ=Europe/Amsterdam date '+%Y-%m-%d %H:%M') (Amsterdam) via eBay API"
           git push
