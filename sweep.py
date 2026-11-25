@@ -6,6 +6,7 @@
   python3 sweep.py A4000 P2000     # 只查指定型号
   python3 sweep.py --board         # 查询后把结果写进同目录 index.html（行情板）
   python3 sweep.py --board --gate  # 同上，但只在阿姆斯特丹 8:00–01:00 之间运行
+  python3 sweep.py --bulk --board  # 高数量板：只留可买数量 > 10 的，价格上限 = 目标 x1.30
 凭据: 环境变量 EBAY_CLIENT_ID / EBAY_CLIENT_SECRET（GitHub Actions secrets），
       或本机 ~/.ebay_api.env 里写这两行。只用 Python 标准库。
 """
@@ -19,16 +20,19 @@ ENV = os.path.expanduser("~/.ebay_api.env")
 TOKEN_CACHE = os.path.expanduser("~/.ebay_api_token.json")
 API = "https://api.ebay.com"
 ZIP = "19713"
-CAP = 1.15                      # 还价上限 = 目标 x1.15
+CAP = 1.15                      # 还价上限 = 目标 x1.15（--bulk 时改为 1.30）
+BULK_CAP = 1.30
+BULK_MIN = 10                   # 高数量板：可买数量必须 > 10（含 eBay 只显示“超过 10 件”的）
 LOW = 0.5                       # 总价低于目标的一半 → 标题加“价格异常低,请核实”
 AMS = ZoneInfo("Europe/Amsterdam")
 EXCLUDE_IDS = {                 # 用户确认过的永久排除
     "377595218856", "206680618249", "227279680039", "256055431624", "305497274750",
     "366661759506", "267777199999", "278437041334", "128105830282"}
 GPU_CAT = "27386"
+ACC = re.compile(r"bracket|cooler", re.I)   # 便宜且标题带这些词 = 配件；价格正常的是“带挡板”的整卡
 BAD = re.compile(
     r"for parts|not working|broken|faulty|defective|as[- ]is|untested|no video|"
-    r"laptop|mobile|mxm|bracket|fan only|heatsink|heat sink|cooler|shroud|backplate|"
+    r"laptop|mobile|mxm|fan only|heatsink|heat sink|shroud|backplate|retention|extender|baffle|"
     r"box only|empty box|water ?block|passive|fanless|lrdimm|4rx4|ddr3|read desc|"
     # 笔记本/迷你工作站显卡模块、改装配件、多件打包
     r"precision ?m?\d{4}|\bdell 7[5-7]\d0\b|thinkpad|zbook|z2 mini|\bp1[5-7]\b|\bn1[7-9][ep]-|\bqn20|"
@@ -161,6 +165,8 @@ def search(model, tok):
             if float(it.get("price", {}).get("value", 0)) >= target * LOW:
                 rejected.append(f"{iid} ${it['price']['value']} {title[:70]}")
             continue
+        if ACC.search(title) and float(it["price"]["value"]) < target * LOW:
+            continue
         if "FIXED_PRICE" not in it.get("buyingOptions", []):
             continue
         sc = ship_cost(it.get("shippingOptions"))
@@ -218,7 +224,12 @@ def status(r):
     return "可还价" if r["bestOffer"] else "略超，不可还价"
 
 
-def sweep(models):
+def is_bulk(r):
+    q = r.get("qty")
+    return q is not None and (q > BULK_MIN or (r.get("qtyMore") and q >= BULK_MIN))
+
+
+def sweep(models, bulk=False):
     t0 = time.time()
     tok = token()
     rows, errors = [], []
@@ -231,6 +242,8 @@ def sweep(models):
         rows = list(ex.map(lambda r: detail(r, tok), rows))
     errors += [f"{r['id']}: {r['detailError']}" for r in rows if r.get("detailError") and not r.get("gone")]
     rows = [r for r in rows if not r.get("gone") and not r.get("detailError") and r["total"] <= r["target"] * CAP]
+    if bulk:
+        rows = [r for r in rows if is_bulk(r)]
     for r in rows:
         r["status"] = status(r)
         r.pop("apiId", None)
@@ -296,9 +309,71 @@ def render_board(res, path):
     open(path, "w", encoding="utf-8").write(html)
 
 
+def fb_text(r):
+    fb, pos = r.get("feedback"), r.get("positive")
+    if fb is None:
+        return "未显示"
+    return f"{fb} / {float(pos):g}%" if pos not in (None, "", "0.0") else f"{fb} / 好评率未显示"
+
+
+def render_bulk(res, path):
+    """高数量板：模板结构与行情板不同（D 多行、带增量说明）。"""
+    html = open(path, encoding="utf-8").read()
+    m = re.search(r"^var SM=(\{.*\});?\s*$", html, re.M)
+    old_sm = json.loads(m.group(1)) if m else {}
+    since = {re.split(r"[（(]", v[0])[0].strip().lower(): v[1] for v in old_sm.values() if v and v[0] and len(v) > 1 and v[1]}
+    dm = re.search(r"^var D=\[.*?\];[ \t]*$", html, re.M | re.S)
+    if not dm:
+        sys.exit("高数量板模板里找不到 var D")
+    old_ids = set(re.findall(r'\["[^"]+",\s*"(\d{12})"', dm.group(0)))
+    D, PS, SM = [], {}, {}
+    for r in res["items"]:
+        D.append([r["model"], r["id"], r["total"], r["target"], qty_code(r),
+                  "" if r.get("sold") is None else str(r["sold"]), fb_text(r), r["title"][:80]])
+        PS[r["id"]] = [f"{r['price']:,.2f}", "Free" if not r["shipping"] else f"US ${r['shipping']:.2f}"]
+        SM[r["id"]] = [r.get("seller") or "", since.get((r.get("seller") or "").lower(), "")]
+    ids = [r["id"] for r in res["items"]]
+    new, gone = [i for i in ids if i not in old_ids], sorted(old_ids - set(ids))
+    inside = sum(1 for r in res["items"] if r["total"] <= r["target"])
+    c = res["apiCalls"]
+    stat = f"{c['search']} 次搜索 · {c['item']} 次库存读取 · {len(res['errors'])} 个错误 · 用时 {res['seconds']:.0f} 秒（eBay 官方 API）"
+    delta = f"合格 {len(ids)} 条（上轮 {len(old_ids)} 条）；新出现 {len(new)} 条；消失 {len(gone)} 条"
+    notes = [
+        "总价 = 商品价 + 邮费。价格上限 = 目标价 ×1.30；目标价和“超目标 %”按每个型号单独设置。"
+        + (f"本轮有 {inside} 条在目标价以内。" if inside else "本轮没有目标价以内的商品。"),
+        "数量门槛：可买数量超过 10。eBay 有时只给下限（“超过 10 件”），真实库存看不出来，页面标“10+（上限显示）”。",
+        "本轮新出现：" + ("、".join(new) if new else "无") + "。",
+        "本轮消失（售出、下架、涨价或数量降到 10 以下）：" + ("、".join(gone) if gone else "无") + "。",
+        "数据来自 eBay 官方 Browse API，自动更新。API 不提供“Buy N or more”阶梯价，本页只按单件价判断，阶梯价能进上限的商品可能漏掉。",
+        "照片、风扇和卖家注册时间 API 不提供；注册时间只沿用以前查到的。购买前请在商品页确认。",
+        "已排除：坏件、配件（支架、挡板、散热片等）、笔记本/MXM 模块、无风扇被动卡、4Rx4 / LRDIMM 内存、只能自提的商品。",
+    ]
+    subs = [
+        (r"^var D=\[.*?\];[ \t]*$", "var D=" + js(D) + ";", re.M | re.S),
+        (r"^var PS=.*$", "var PS=" + js(PS) + ";", re.M),
+        (r"^var SM=.*$", "var SM=" + js(SM) + ";", re.M),
+        (r"^var ORDER=.*$", "var ORDER=" + js(list(MODELS)) + ";", re.M),
+        (r"(?<=查询时间（阿姆斯特丹）<b>)[^<]*(?=</b>)", res["queryTimeAmsterdam"], re.M),
+        (r"<span>本轮 <b>[^<]*</b></span>", "<span>本轮 <b>" + stat + "</b></span>", re.M),
+        (r"<span>增量 <b>[^<]*</b></span>", "<span>增量 <b>" + delta + "</b></span>", re.M),
+        (r'<p class="sub">[^<]*</p>', '<p class="sub">美国 eBay，送到 19713，仅美国发货。只列可买数量超过 10 的（含 eBay 只显示“超过 10 件”的）、'
+         '总价不超过目标价 130% 的显卡和内存。</p>', re.M),
+        (r"(?<=<b>说明</b>\n)\s*<ul>.*?</ul>", "    <ul>\n" + "".join(f"      <li>{n}</li>\n" for n in notes) + "    </ul>", re.S),
+    ]
+    for pat, rep_, fl in subs:
+        html, n = re.subn(pat, lambda _m, rep_=rep_: rep_, html, count=1, flags=fl)
+        if n != 1:
+            sys.exit(f"高数量板模板里找不到要替换的位置: {pat}")
+    open(path, "w", encoding="utf-8").write(html)
+    return len(ids), len(new), len(gone)
+
+
 def main():
     args = sys.argv[1:]
-    board, gate = "--board" in args, "--gate" in args
+    global CAP
+    board, gate, bulk = "--board" in args, "--gate" in args, "--bulk" in args
+    if bulk:
+        CAP = BULK_CAP
     from_json = next((a.split("=", 1)[1] for a in args if a.startswith("--from-json=")), None)
     names = [a for a in args if not a.startswith("--")]
     bad = [n for n in names if n not in MODELS]
@@ -312,8 +387,10 @@ def main():
         res["items"] = [r for r in res["items"] if r["id"] not in EXCLUDE_IDS and title_ok(r["model"], r["title"])]
         for r in res["items"]:
             r.setdefault("qtyMore", r.get("qtyText", "").startswith("超过"))
+        if bulk:
+            res["items"] = [r for r in res["items"] if is_bulk(r)]
     else:
-        res = sweep([m for m in MODELS if not names or m in names])
+        res = sweep([m for m in MODELS if not names or m in names], bulk)
         with open(os.path.join(HERE, "api_sweep_latest.json"), "w", encoding="utf-8") as f:
             json.dump(res, f, ensure_ascii=False, indent=1)
     rows = res["items"]
@@ -323,7 +400,7 @@ def main():
     for d in DIAG:
         print("  " + d)
     for r in rows:
-        if r.get("status") in ("可直接买", "可还价"):
+        if bulk or r.get("status") in ("可直接买", "可还价"):
             print(f"[{r['status']}] {r['model']} ${r['total']:.2f}（目标 ${r['target']}）{r['qtyText']} "
                   f"{'可还价' if r['bestOffer'] else '不可还价'} {r['seller']} {r['url']}")
     if board:
@@ -331,8 +408,12 @@ def main():
             sys.exit("本轮有请求失败，结果不完整，不更新行情板。")
         if names:
             sys.exit("只查了部分型号，不更新行情板。")
-        render_board(res, os.path.join(HERE, "index.html"))
-        print("行情板已更新: index.html")
+        if bulk:
+            n, new, gone = render_bulk(res, os.path.join(HERE, "index.html"))
+            print(f"高数量板已更新: 合格 {n} 条，新出现 {new}，消失 {gone}")
+        else:
+            render_board(res, os.path.join(HERE, "index.html"))
+            print("行情板已更新: index.html")
 
 
 if __name__ == "__main__":
