@@ -65,6 +65,7 @@ MODELS = {
  "DDR4 ECC 32GB":("32GB DDR4 ECC",        100, 1, r"32 ?gb.*2rx4|2rx4.*32 ?gb", r"\b(8|16|64|128) ?gb|sodimm|so-dimm|udimm|\b([2-9]|\d\d) ?x ?32 ?gb|32 ?gb ?x ?([2-9]|\d\d)\b", ""),
 }
 CALLS = {"token": 0, "search": 0, "item": 0}
+TRACE = ""                      # --trace=商品编号：在日志里打印这件商品在每一步的情况
 DIAG = []                       # 每个型号的搜索诊断，打印在日志里
 
 
@@ -164,6 +165,13 @@ def search(model, tok):
         if offset >= r.get("total", 0):
             break
     rows, rejected = [], []
+    if TRACE and model == "P2000" or TRACE and TRACE in {i.get("legacyItemId") for i in out}:
+        hit = [i for i in out if i.get("legacyItemId") == TRACE]
+        print(f"TRACE {model}: 搜索返回 {len(out)} 条，其中{'有' if hit else '没有'} {TRACE}")
+        for i in hit:
+            print("TRACE summary:", json.dumps({k: i.get(k) for k in ("title", "price", "shippingOptions", "buyingOptions",
+                  "conditionId", "itemLocation")}, ensure_ascii=False)[:900])
+            print("TRACE title_ok:", title_ok(model, i.get("title", "")), "ship_cost:", ship_cost(i.get("shippingOptions")))
     for it in out:
         iid, title = it.get("legacyItemId", ""), it.get("title", "")
         if iid in EXCLUDE_IDS or str(it.get("conditionId")) == "7000" or not title_ok(model, title):
@@ -203,6 +211,9 @@ def detail(row, tok):
         row["detailError"] = str(e)[:120]
         return row
     a = (r.get("estimatedAvailabilities") or [{}])[0]
+    if TRACE and row["id"] == TRACE:
+        print("TRACE item:", json.dumps({"avail": r.get("estimatedAvailabilities"), "price": r.get("price"),
+              "shippingOptions": r.get("shippingOptions")}, ensure_ascii=False)[:900])
     row["gone"] = a.get("estimatedAvailabilityStatus") == "OUT_OF_STOCK"
     row["sold"] = a.get("estimatedSoldQuantity")
     if a.get("estimatedAvailableQuantity") is not None:
@@ -243,6 +254,17 @@ def sweep(models, bulk=False):
             rows += search(m, tok)
         except RuntimeError as e:
             errors.append(f"{m}: {e}")
+    if TRACE and rows:                           # 顺便试一下批量接口 getItems 返回什么
+        try:
+            ids = ",".join(r["apiId"] for r in rows[:3])
+            b = get("/buy/browse/v1/item/?item_ids=" + urllib.parse.quote(ids, safe=","), tok)
+            its = b.get("items", [])
+            print("TRACE getItems: top keys", list(b)[:6], "n=", len(its))
+            if its:
+                print("TRACE getItems item keys:", sorted(its[0])[:60])
+                print("TRACE getItems avail:", json.dumps(its[0].get("estimatedAvailabilities"), ensure_ascii=False)[:300])
+        except RuntimeError as e:
+            print("TRACE getItems failed:", str(e)[:300])
     with ThreadPoolExecutor(4) as ex:
         rows = list(ex.map(lambda r: detail(r, tok), rows))
     errors += [f"{r['id']}: {r['detailError']}" for r in rows if r.get("detailError") and not r.get("gone")]
@@ -376,7 +398,8 @@ def render_bulk(res, path):
 
 def main():
     args = sys.argv[1:]
-    global CAP
+    global CAP, TRACE
+    TRACE = next((a.split("=", 1)[1] for a in args if a.startswith("--trace=")), "")
     board, gate, bulk, wide = "--board" in args, "--gate" in args, "--bulk" in args, "--wide" in args
     if bulk or wide:
         CAP = BULK_CAP

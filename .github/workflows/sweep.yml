@@ -3,6 +3,10 @@ on:
   schedule:
     - cron: "2,17,32,47 * * * *"   # GitHub 定时经常延迟或漏跑，所以每 15 分钟触发；脚本保证两轮至少间隔 50 分钟，并跳过阿姆斯特丹 02:00–08:00
   workflow_dispatch:
+    inputs:
+      args:
+        description: "调试用：直接传给 sweep.py 的参数（留空 = 正常跑一轮并更新行情板）"
+        default: ""
 permissions:
   contents: write
 concurrency:
@@ -21,9 +25,10 @@ jobs:
         env:
           EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
           EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
-        run: python3 sweep.py --wide --board ${{ github.event_name == 'schedule' && '--gate --min-interval=50' || '' }}
+        run: python3 sweep.py ${{ inputs.args || format('--wide --board {0}', github.event_name == 'schedule' && '--gate --min-interval=50' || '') }}
       - name: Commit board
         run: |
+          if [ -n "${{ inputs.args }}" ]; then echo "debug run, nothing committed"; exit 0; fi
           git add index.html api_sweep_latest.json
           if git diff --cached --quiet; then echo "no change"; exit 0; fi
           git config user.name "github-actions[bot]"
