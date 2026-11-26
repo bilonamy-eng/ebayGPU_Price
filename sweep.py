@@ -443,6 +443,16 @@ def main():
     if bulk or wide:
         CAP = BULK_CAP
     from_json = next((a.split("=", 1)[1] for a in args if a.startswith("--from-json=")), None)
+    if "--quota" in args:                       # 只查 eBay 的 API 额度，不查商品
+        r = get("/developer/analytics/v1_beta/rate_limit/?api_name=browse&api_context=buy", token())
+        for api in r.get("rateLimits", []):
+            for res in api.get("resources", []):
+                for rate in res.get("rates", []):
+                    print(f"QUOTA {api.get('apiName')} {res.get('name')}: limit={rate.get('limit')} remaining={rate.get('remaining')} "
+                          f"reset={rate.get('reset')} window={rate.get('timeWindow')}s")
+        if not r.get("rateLimits"):
+            print("QUOTA raw:", json.dumps(r)[:500])
+        return
     names = [a for a in args if not a.startswith("--")]
     bad = [n for n in names if n not in MODELS]
     if bad:
