@@ -6,8 +6,8 @@
   python3 sweep.py A4000 P2000     # 只查指定型号
   python3 sweep.py --board         # 查询后把结果写进同目录 index.html（行情板）
   python3 sweep.py --board --gate  # 同上，但只在阿姆斯特丹 8:00–01:00 之间运行
-  python3 sweep.py --bulk --board  # 高数量板：只留可买数量 > 10 的，价格上限 = 目标 x1.30
-  python3 sweep.py --wide --board  # 按 x1.30 查一次并保存 api_sweep_latest.json（供高数量板共用），行情板只显示 x1.15 以内
+  python3 sweep.py --bulk --board  # 高数量板：只留可买数量 > 10 的，价格上限 = 目标 x1.40
+  python3 sweep.py --wide --board  # 按 x1.40 查一次并保存 api_sweep_latest.json（供高数量板共用），行情板只显示 x1.15 以内
   python3 sweep.py --bulk --board --from-json=FILE   # 不调用 API，用已保存的结果更新高数量板
 凭据: 环境变量 EBAY_CLIENT_ID / EBAY_CLIENT_SECRET（GitHub Actions secrets），
       或本机 ~/.ebay_api.env 里写这两行。只用 Python 标准库。
@@ -24,7 +24,7 @@ API = "https://api.ebay.com"
 ZIP = "19713"
 CAP = 1.15                      # 搜索用的价格上限（--bulk / --wide 时改为 1.30）
 PRICE_CAP = 1.15                # 行情板：还价上限 = 目标 x1.15
-BULK_CAP = 1.30
+BULK_CAP = 1.40                 # 高数量板：价格上限 = 目标 x1.40（用户 2026-11-26 从 1.30 放宽）
 BULK_MIN = 10                   # 高数量板：可买数量必须 > 10（含 eBay 只显示“超过 10 件”的）
 LOW = 0.5                       # 总价低于目标的一半 → 标题加“价格异常低,请核实”
 AMS = ZoneInfo("Europe/Amsterdam")
@@ -344,7 +344,7 @@ def render_bulk(res, path):
     stat = f"{c['search']} 次搜索 · {c['item']} 次库存读取 · {len(res['errors'])} 个错误 · 用时 {res['seconds']:.0f} 秒（eBay 官方 API）"
     delta = f"合格 {len(ids)} 条（上轮 {len(old_ids)} 条）；新出现 {len(new)} 条；消失 {len(gone)} 条"
     notes = [
-        "总价 = 商品价 + 邮费。价格上限 = 目标价 ×1.30；目标价和“超目标 %”按每个型号单独设置。"
+        f"总价 = 商品价 + 邮费。价格上限 = 目标价 ×{BULK_CAP:.2f}；目标价和“超目标 %”按每个型号单独设置。"
         + (f"本轮有 {inside} 条在目标价以内。" if inside else "本轮没有目标价以内的商品。"),
         "数量门槛：可买数量超过 10。eBay 有时只给下限（“超过 10 件”），真实库存看不出来，页面标“10+（上限显示）”。",
         "本轮新出现：" + ("、".join(new) if new else "无") + "。",
@@ -362,7 +362,8 @@ def render_bulk(res, path):
         (r"<span>本轮 <b>[^<]*</b></span>", "<span>本轮 <b>" + stat + "</b></span>", re.M),
         (r"<span>增量 <b>[^<]*</b></span>", "<span>增量 <b>" + delta + "</b></span>", re.M),
         (r'<p class="sub">[^<]*</p>', '<p class="sub">美国 eBay，送到 19713，仅美国发货。只列可买数量超过 10 的（含 eBay 只显示“超过 10 件”的）、'
-         '总价不超过目标价 130% 的显卡和内存。</p>', re.M),
+         f'总价不超过目标价 {BULK_CAP * 100:.0f}% 的显卡和内存。</p>', re.M),
+        (r"^var CAP=[\d.]+;", f"var CAP={BULK_CAP};", re.M),
         (r"(?<=<b>说明</b>\n)\s*<ul>.*?</ul>", "    <ul>\n" + "".join(f"      <li>{n}</li>\n" for n in notes) + "    </ul>", re.S),
     ]
     for pat, rep_, fl in subs:
