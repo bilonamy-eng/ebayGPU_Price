@@ -182,11 +182,11 @@ def search(model, tok):
             continue
         if "FIXED_PRICE" not in it.get("buyingOptions", []):
             continue
-        sc = ship_cost(it.get("shippingOptions"))
-        if sc is None:
-            continue                          # 无配送 = 只能自提，排除
+        if not it.get("shippingOptions"):
+            continue                          # 没有任何配送选项 = 只能自提，排除
+        sc = ship_cost(it.get("shippingOptions"))   # None = 按地址计算的运费，搜索结果里不给金额，稍后从商品详情取
         price = float(it["price"]["value"])
-        total = round(price + sc, 2)
+        total = round(price + (sc or 0), 2)
         if total > target * CAP:
             continue
         s = it.get("seller", {})
@@ -225,9 +225,11 @@ def detail(row, tok):
     else:
         row["qty"], row["qtyMore"], row["qtyText"] = None, False, "数量未显示"
     sc = ship_cost(r.get("shippingOptions"))
-    if sc is not None and r.get("price"):
-        row["price"], row["shipping"] = float(r["price"]["value"]), sc
-        row["total"] = round(row["price"] + sc, 2)
+    if r.get("price"):
+        row["price"] = float(r["price"]["value"])
+    if sc is not None:
+        row["shipping"] = sc
+    row["total"] = round(row["price"] + (row["shipping"] or 0), 2)
     row["returns"] = "接受退货" if r.get("returnTerms", {}).get("returnsAccepted") else "不接受退货"
     return row
 
@@ -314,7 +316,7 @@ def render_board(res, path):
         elif fb is not None and fb < 100:
             title += f"(卖家只有 {fb} 条反馈)"
         D.append([r["model"], r["id"], r["total"], r["target"], qty_code(r), "", fbtxt, title])
-        PS[r["id"]] = [f"{r['price']:,.2f}", "Free" if not r["shipping"] else f"US ${r['shipping']:.2f}"]
+        PS[r["id"]] = [f"{r['price']:,.2f}", "?" if r["shipping"] is None else "Free" if not r["shipping"] else f"US ${r['shipping']:.2f}"]
         SM[r["id"]] = [r.get("seller") or "", since.get(r.get("seller") or "", "")]
     c = res["apiCalls"]
     stat = f"{c['search']} 次搜索 · {c['item']} 次库存读取 · {len(res['errors'])} 个错误 · 用时 {res['seconds']:.0f} 秒"
@@ -357,7 +359,7 @@ def render_bulk(res, path):
     for r in res["items"]:
         D.append([r["model"], r["id"], r["total"], r["target"], qty_code(r),
                   "" if r.get("sold") is None else str(r["sold"]), fb_text(r), r["title"][:80]])
-        PS[r["id"]] = [f"{r['price']:,.2f}", "Free" if not r["shipping"] else f"US ${r['shipping']:.2f}"]
+        PS[r["id"]] = [f"{r['price']:,.2f}", "?" if r["shipping"] is None else "Free" if not r["shipping"] else f"US ${r['shipping']:.2f}"]
         SM[r["id"]] = [r.get("seller") or "", since.get((r.get("seller") or "").lower(), "")]
     ids = [r["id"] for r in res["items"]]
     new, gone = [i for i in ids if i not in old_ids], sorted(old_ids - set(ids))
