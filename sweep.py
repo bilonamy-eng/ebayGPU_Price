@@ -64,8 +64,10 @@ MODELS = {
  "P1000":        ("Quadro P1000 4GB",        40, 5, r"p1000", r"", GPU_CAT),
  "DDR4 ECC 32GB":("32GB DDR4 ECC",        100, 1, r"32 ?gb.*2rx4|2rx4.*32 ?gb", r"\b(8|16|64|128) ?gb|sodimm|so-dimm|udimm|\b([2-9]|\d\d) ?x ?32 ?gb|32 ?gb ?x ?([2-9]|\d\d)\b", ""),
 }
-CALLS = {"token": 0, "search": 0, "item": 0}
+CALLS = {"token": 0, "search": 0, "item": 0, "skipped": 0}
 TRACE = ""                      # --trace=商品编号：在日志里打印这件商品在每一步的情况
+QTY_CACHE = os.path.join(HERE, "api_qty_cache.json")
+RECHECK_H = 6                   # 行情板范围以外、且上次查到数量 ≤10 的商品，每 6 小时才重新读一次库存（省 API 额度）
 DIAG = []                       # 每个型号的搜索诊断，打印在日志里
 
 
@@ -132,7 +134,7 @@ def token():
 def get(path, tok):
     return http(urllib.request.Request(API + path, headers={
         "Authorization": "Bearer " + tok, "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
-        "X-EBAY-C-ENDUSERCTX": f"contextualLocation=country=US,zip={ZIP}"}))
+        "X-EBAY-C-ENDUSERCTX": "contextualLocation=" + urllib.parse.quote(f"country=US,zip={ZIP}", safe="")}))
 
 
 def ship_cost(opts):
@@ -237,12 +239,14 @@ def detail(row, tok):
 def status(r):
     if r["total"] < r["target"] * LOW:
         return "价格异常低，需核实"
+    if r.get("shipping") is None:
+        return "运费未显示，需在页面确认"
     if r["total"] <= r["target"]:
         return "可直接买" if (r.get("qty") or 1) >= r["need"] else "价格合格，数量不够"
     return "可还价" if r["bestOffer"] else "略超，不可还价"
 
 
-def is_bulk(r):
+def is_bulk(r):  # noqa: E302
     q = r.get("qty")
     return q is not None and (q > BULK_MIN or (r.get("qtyMore") and q >= BULK_MIN))
 
@@ -267,8 +271,31 @@ def sweep(models, bulk=False):
                 print("TRACE getItems avail:", json.dumps(its[0].get("estimatedAvailabilities"), ensure_ascii=False)[:300])
         except RuntimeError as e:
             print("TRACE getItems failed:", str(e)[:300])
+    # 省额度：价格在行情板范围内的、上次数量 >10 的、没见过的，每轮都重新读库存；
+    # 其余（只可能进高数量板、但上次确认数量 ≤10）每 RECHECK_H 小时才重读一次。
+    try:
+        cache = json.load(open(QTY_CACHE, encoding="utf-8"))
+    except (OSError, ValueError):
+        cache = {}
+    now, skipped = time.time(), 0
+    todo = []
+    for r in rows:
+        c = cache.get(r["id"])
+        in_price_range = r["price"] <= r["target"] * PRICE_CAP
+        if (in_price_range or not c or now - c["t"] > RECHECK_H * 3600 or c.get("bulk") or c.get("price") != r["price"]
+                or r["id"] == TRACE):
+            todo.append(r)
+        else:
+            skipped += 1
     with ThreadPoolExecutor(4) as ex:
-        rows = list(ex.map(lambda r: detail(r, tok), rows))
+        rows = list(ex.map(lambda r: detail(r, tok), todo))
+    for r in rows:
+        if not r.get("detailError"):
+            cache[r["id"]] = {"t": int(now), "bulk": bool(is_bulk(r)), "price": r["price"]}
+    cache = {k: v for k, v in cache.items() if now - v["t"] < 3 * 86400}
+    with open(QTY_CACHE, "w", encoding="utf-8") as f:
+        json.dump(cache, f, separators=(",", ":"))
+    CALLS["skipped"] = skipped
     errors += [f"{r['id']}: {r['detailError']}" for r in rows if r.get("detailError") and not r.get("gone")]
     rows = [r for r in rows if not r.get("gone") and not r.get("detailError") and r["total"] <= r["target"] * CAP]
     if bulk:
@@ -283,6 +310,11 @@ def sweep(models, bulk=False):
 
 
 # ---------- 行情板 ----------
+def skip_note(c):
+    n = c.get("skipped", 0)
+    return f"（另有 {n} 件数量 ≤10 的沿用 {RECHECK_H} 小时内的记录）" if n else ""
+
+
 def js(obj):
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
 
@@ -311,6 +343,8 @@ def render_board(res, path):
         pos = r.get("positive")
         fbtxt = "未显示" if fb is None else (f"{fb} / {float(pos):g}%" if pos not in (None, "", "0.0") else f"{fb} / 好评率未显示")
         title = r["title"][:70]
+        if r["shipping"] is None:
+            title += "(运费未显示,总价未含运费)"
         if r["total"] < r["target"] * LOW:
             title += "(价格异常低,请核实)"
         elif fb is not None and fb < 100:
@@ -319,7 +353,7 @@ def render_board(res, path):
         PS[r["id"]] = [f"{r['price']:,.2f}", "?" if r["shipping"] is None else "Free" if not r["shipping"] else f"US ${r['shipping']:.2f}"]
         SM[r["id"]] = [r.get("seller") or "", since.get(r.get("seller") or "", "")]
     c = res["apiCalls"]
-    stat = f"{c['search']} 次搜索 · {c['item']} 次库存读取 · {len(res['errors'])} 个错误 · 用时 {res['seconds']:.0f} 秒"
+    stat = f"{c['search']} 次搜索 · {c['item']} 次库存读取{skip_note(c)} · {len(res['errors'])} 个错误 · 用时 {res['seconds']:.0f} 秒"
     subs = [
         (r"^var D=.*$", "var D=" + js(D) + ";"),
         (r"^var PS=.*$", "var PS=" + js(PS) + ";"),
@@ -358,14 +392,15 @@ def render_bulk(res, path):
     D, PS, SM = [], {}, {}
     for r in res["items"]:
         D.append([r["model"], r["id"], r["total"], r["target"], qty_code(r),
-                  "" if r.get("sold") is None else str(r["sold"]), fb_text(r), r["title"][:80]])
+                  "" if r.get("sold") is None else str(r["sold"]), fb_text(r),
+                  r["title"][:80] + ("(运费未显示,总价未含运费)" if r["shipping"] is None else "")])
         PS[r["id"]] = [f"{r['price']:,.2f}", "?" if r["shipping"] is None else "Free" if not r["shipping"] else f"US ${r['shipping']:.2f}"]
         SM[r["id"]] = [r.get("seller") or "", since.get((r.get("seller") or "").lower(), "")]
     ids = [r["id"] for r in res["items"]]
     new, gone = [i for i in ids if i not in old_ids], sorted(old_ids - set(ids))
     inside = sum(1 for r in res["items"] if r["total"] <= r["target"])
     c = res["apiCalls"]
-    stat = f"{c['search']} 次搜索 · {c['item']} 次库存读取 · {len(res['errors'])} 个错误 · 用时 {res['seconds']:.0f} 秒（eBay 官方 API）"
+    stat = f"{c['search']} 次搜索 · {c['item']} 次库存读取{skip_note(c)} · {len(res['errors'])} 个错误 · 用时 {res['seconds']:.0f} 秒（eBay 官方 API）"
     delta = f"合格 {len(ids)} 条（上轮 {len(old_ids)} 条）；新出现 {len(new)} 条；消失 {len(gone)} 条"
     notes = [
         f"总价 = 商品价 + 邮费。价格上限 = 目标价 ×{BULK_CAP:.2f}；目标价和“超目标 %”按每个型号单独设置。"
