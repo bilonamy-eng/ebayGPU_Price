@@ -1,7 +1,7 @@
 name: eBay API sweep
 on:
   schedule:
-    - cron: "17 * * * *"      # 每小时一次；脚本自己跳过阿姆斯特丹 02:00–08:00
+    - cron: "2,17,32,47 * * * *"   # GitHub 定时经常延迟或漏跑，所以每 15 分钟触发；脚本保证两轮至少间隔 50 分钟，并跳过阿姆斯特丹 02:00–08:00
   workflow_dispatch:
 permissions:
   contents: write
@@ -21,7 +21,7 @@ jobs:
         env:
           EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
           EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
-        run: python3 sweep.py --wide --board ${{ github.event_name == 'schedule' && '--gate' || '' }}
+        run: python3 sweep.py --wide --board ${{ github.event_name == 'schedule' && '--gate --min-interval=50' || '' }}
       - name: Commit board
         run: |
           git add index.html api_sweep_latest.json

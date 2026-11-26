@@ -387,6 +387,16 @@ def main():
     if gate and datetime.now(AMS).hour in range(2, 8):
         print("阿姆斯特丹 02:00–08:00 之间不查询，本轮跳过。")
         return
+    min_iv = next((int(a.split("=", 1)[1]) for a in args if a.startswith("--min-interval=")), 0)
+    if min_iv and not from_json:                # 定时任务每小时触发多次，距上一轮不足 N 分钟就跳过
+        try:
+            last = json.load(open(os.path.join(HERE, "api_sweep_latest.json"), encoding="utf-8"))["queryTimeAmsterdam"]
+            age = (datetime.now(AMS) - datetime.strptime(last, "%Y-%m-%d %H:%M").replace(tzinfo=AMS)).total_seconds() / 60
+            if 0 <= age < min_iv:
+                print(f"上一轮在 {age:.0f} 分钟前（{last}），不足 {min_iv} 分钟，本次跳过。")
+                return
+        except (OSError, KeyError, ValueError):
+            pass
     if from_json:                               # 仅用于离线测试渲染
         res = json.load(open(from_json, encoding="utf-8"))
         res["items"] = [r for r in res["items"] if r["id"] not in EXCLUDE_IDS and title_ok(r["model"], r["title"])]
