@@ -31,7 +31,8 @@ AMS = ZoneInfo("Europe/Amsterdam")
 EXCLUDE_IDS = {                 # 用户确认过的永久排除
     "377595218856", "206680618249", "227279680039", "256055431624", "305497274750",
     "366661759506", "267777199999", "278437041334", "128105830282",
-    "206726057794"}             # Kingston KTH-PL421LQ/32G = 4Rx4 LRDIMM
+    "206726057794",
+    "146893898458", "178538730092"}             # Kingston KTH-PL421LQ/32G = 4Rx4 LRDIMM
 GPU_CAT = "27386"
 ACC = re.compile(r"bracket|cooler", re.I)   # 便宜且标题带这些词 = 配件；价格正常的是“带挡板”的整卡
 BAD = re.compile(
