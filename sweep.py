@@ -38,6 +38,7 @@ ACC = re.compile(r"bracket|cooler", re.I)   # 便宜且标题带这些词 = 配�
 BAD = re.compile(
     r"for parts|not working|broken|faulty|defective|as[- ]is|untested|no video|"
     r"laptop|mobile|mxm|fan only|heatsink|heat sink|shroud|backplate|retention|extender|baffle|"
+    r"thermal|copper|\bplate\b|\bpads?\b|\bcable\b|adapter|replacement fan|\bfan for\b|"
     r"box only|empty box|water ?block|passive|fanless|lrdimm|4rx4|ddr3|pc3l?-|read desc|"
     r"load.?reduced|quad.?rank|\bk[a-z]{2}-[a-z]{2}\d{3}lq|-l\b(?=.*pc4)|pc4-\d{4,5}[a-z]?-l\b|"   # LRDIMM 的其他写法（Kingston 料号 …LQ/32G、PC4-2133P-L）
     # 笔记本/迷你工作站显卡模块、改装配件、多件打包
