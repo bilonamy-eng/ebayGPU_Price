@@ -7,6 +7,10 @@ on:
       args:
         description: "调试用：直接传给 sweep.py 的参数（留空 = 正常跑一轮并更新行情板）"
         default: ""
+      force:
+        description: "立即跑一轮，忽略“两轮至少间隔 50 分钟”的限制"
+        type: boolean
+        default: false
 permissions:
   contents: write
 concurrency:
@@ -25,7 +29,7 @@ jobs:
         env:
           EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
           EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
-        run: python3 sweep.py ${{ inputs.args || format('--wide --board {0}', github.event_name == 'schedule' && '--gate --min-interval=50' || '') }}
+        run: python3 sweep.py ${{ inputs.args || format('--wide --board {0} {1}', github.event_name == 'schedule' && '--gate' || '', inputs.force && ' ' || '--min-interval=50') }}
       - name: Commit board
         run: |
           if [ -n "${{ inputs.args }}" ]; then echo "debug run, nothing committed"; exit 0; fi
